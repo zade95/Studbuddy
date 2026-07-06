@@ -17,6 +17,7 @@ interface CoursesViewProps {
     required_percent?: number
   ) => void;
   isDark: boolean;
+  onImportDemoData?: () => void;
 }
 
 export default function CoursesView({
@@ -25,6 +26,7 @@ export default function CoursesView({
   onDeleteCourse,
   onUpdateCourse,
   isDark,
+  onImportDemoData,
 }: CoursesViewProps) {
   // Modal State for adding course
   const [isAddOpen, setIsAddOpen] = useState(false);
@@ -190,32 +192,74 @@ export default function CoursesView({
 
       {/* Course Cards Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {courses.map((course) => {
-          const calc = calculateAttendance(course.held, course.attended, course.required_percent);
-          const isExpanded = selectedCourseId === course.id;
+        {courses.length === 0 ? (
+          <div className={`col-span-full rounded-[32px] p-8 md:p-12 border text-center flex flex-col items-center justify-center space-y-5 ${
+            isDark ? 'bg-[#25251F] border-[#2D2D25]' : 'bg-white border-black/5'
+          }`}>
+            <div className={`p-4 rounded-2xl ${
+              isDark ? 'bg-[#829653]/10 text-[#829653]' : 'bg-[#606C38]/10 text-[#606C38]'
+            }`}>
+              <Book size={36} className="animate-pulse" />
+            </div>
+            <div className="max-w-md space-y-1">
+              <h3 className={`font-serif italic text-lg font-bold ${isDark ? 'text-white' : 'text-[#2D2D2D]'}`}>
+                No courses registered yet
+              </h3>
+              <p className="text-xs opacity-70">
+                Create a brand new course manually or click below to seed your academic term with sample college subjects.
+              </p>
+            </div>
+            <div className="flex flex-col sm:flex-row items-center gap-3 pt-2">
+              <button
+                onClick={handleOpenAdd}
+                className={`w-full sm:w-auto py-2.5 px-5 text-xs font-bold text-white rounded-xl cursor-pointer hover:opacity-95 transition-all ${
+                  isDark ? 'bg-[#D4A373] text-black' : 'bg-[#606C38] text-white'
+                }`}
+              >
+                Add New Course
+              </button>
+              {onImportDemoData && (
+                <button
+                  type="button"
+                  onClick={onImportDemoData}
+                  className={`w-full sm:w-auto py-2.5 px-5 text-xs font-bold rounded-xl border cursor-pointer hover:opacity-90 transition-all ${
+                    isDark 
+                      ? 'border-[#2D2D25] bg-[#1C1C16] text-[#D4A373]' 
+                      : 'border-black/5 bg-[#F5F5F0] text-[#5A5A40]'
+                  }`}
+                >
+                  Seed Sandbox Preset Data
+                </button>
+              )}
+            </div>
+          </div>
+        ) : (
+          courses.map((course) => {
+            const calc = calculateAttendance(course.held, course.attended, course.required_percent);
+            const isExpanded = selectedCourseId === course.id;
 
-          // Determine status text & colors under Natural Tones palette
-          let statusLabel = 'Safe';
-          let badgeColors = isDark 
-            ? 'bg-[#829653]/15 text-[#829653] border-[#829653]/20' 
-            : 'bg-[#606C38]/10 text-[#606C38] border-[#606C38]/20';
-          let percentColor = isDark ? 'text-[#829653]' : 'text-[#606C38]';
+            // Determine status text & colors under Natural Tones palette
+            let statusLabel = 'Safe';
+            let badgeColors = isDark 
+              ? 'bg-[#829653]/15 text-[#829653] border-[#829653]/20' 
+              : 'bg-[#606C38]/10 text-[#606C38] border-[#606C38]/20';
+            let percentColor = isDark ? 'text-[#829653]' : 'text-[#606C38]';
 
-          if (!calc.isSafe) {
-            if (calc.currentPercent >= course.required_percent - 5) {
-              statusLabel = 'Warning';
-              badgeColors = 'bg-[#DDA15E]/15 text-[#DDA15E] border-[#DDA15E]/25';
-              percentColor = 'text-[#DDA15E]';
-            } else {
-              statusLabel = 'Critical';
-              badgeColors = isDark 
-                ? 'bg-[#D18E4E]/15 text-[#D18E4E] border-[#D18E4E]/20' 
-                : 'bg-[#BC6C25]/10 text-[#BC6C25] border-[#BC6C25]/20';
-              percentColor = isDark ? 'text-[#D18E4E]' : 'text-[#BC6C25]';
+            if (!calc.isSafe) {
+              if (calc.currentPercent >= course.required_percent - 5) {
+                statusLabel = 'Warning';
+                badgeColors = 'bg-[#DDA15E]/15 text-[#DDA15E] border-[#DDA15E]/25';
+                percentColor = 'text-[#DDA15E]';
+              } else {
+                statusLabel = 'Critical';
+                badgeColors = isDark 
+                  ? 'bg-[#D18E4E]/15 text-[#D18E4E] border-[#D18E4E]/20' 
+                  : 'bg-[#BC6C25]/10 text-[#BC6C25] border-[#BC6C25]/20';
+                percentColor = isDark ? 'text-[#D18E4E]' : 'text-[#BC6C25]';
+              }
             }
-          }
 
-          return (
+            return (
             <div
               key={course.id}
               className={`rounded-[32px] border transition-all flex flex-col justify-between overflow-hidden ${
@@ -344,7 +388,7 @@ export default function CoursesView({
               </button>
             </div>
           );
-        })}
+        }) )}`
       </div>
 
       {/* ================= ADD COURSE MODAL ================= */}

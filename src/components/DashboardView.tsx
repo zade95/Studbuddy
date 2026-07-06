@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { LayoutDashboard, BookOpen, AlertTriangle, CheckCircle, Clock, MapPin, Calculator, TrendingUp } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { LayoutDashboard, BookOpen, AlertTriangle, CheckCircle, Clock, MapPin, Calculator, TrendingUp, Sparkles, Plus, Trash2, Pin, Square, CheckSquare } from 'lucide-react';
 import { Course, ScheduleSlot } from '../types';
 import { calculateAttendance } from '../lib/attendance';
 
@@ -17,6 +17,7 @@ interface DashboardViewProps {
   ) => void;
   onNavigateToTab: (tab: 'dashboard' | 'analytics' | 'courses' | 'schedule') => void;
   isDark: boolean;
+  onImportDemoData?: () => void;
 }
 
 export default function DashboardView({
@@ -25,6 +26,7 @@ export default function DashboardView({
   onUpdateCourse,
   onNavigateToTab,
   isDark,
+  onImportDemoData,
 }: DashboardViewProps) {
   // State for editing target attendances
   const [editingTargetId, setEditingTargetId] = useState<string | null>(null);
@@ -32,6 +34,50 @@ export default function DashboardView({
   
   const [isEditingGlobalTarget, setIsEditingGlobalTarget] = useState<boolean>(false);
   const [globalTargetVal, setGlobalTargetVal] = useState<number>(75);
+
+  const [notes, setNotes] = useState<{ id: string; text: string; completed: boolean }[]>(() => {
+    try {
+      const saved = localStorage.getItem('studbuddy_dashboard_notes');
+      if (saved) return JSON.parse(saved);
+    } catch (e) {
+      console.warn('Error loading notes:', e);
+    }
+    return [
+      { id: '1', text: "Revise Calculus integration formulas before Thursday's lecture", completed: false },
+      { id: '2', text: "Meet with Physics study group at the library (3 PM)", completed: false },
+      { id: '3', text: "Maintain solid attendance streak in Data Structures to hit target", completed: true },
+    ];
+  });
+  const [newNoteText, setNewNoteText] = useState('');
+
+  // Save notes to localStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem('studbuddy_dashboard_notes', JSON.stringify(notes));
+    } catch (e) {
+      console.warn('Error saving notes:', e);
+    }
+  }, [notes]);
+
+  const handleAddNote = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newNoteText.trim()) return;
+    const newNote = {
+      id: String(Date.now()),
+      text: newNoteText.trim(),
+      completed: false,
+    };
+    setNotes(prev => [...prev, newNote]);
+    setNewNoteText('');
+  };
+
+  const handleToggleNote = (id: string) => {
+    setNotes(prev => prev.map(note => note.id === id ? { ...note, completed: !note.completed } : note));
+  };
+
+  const handleDeleteNote = (id: string) => {
+    setNotes(prev => prev.filter(note => note.id !== id));
+  };
 
   const handleSaveTarget = (courseId: string) => {
     const course = courses.find(c => c.id === courseId);
@@ -42,6 +88,73 @@ export default function DashboardView({
     onUpdateCourse(course.id, course.held, course.attended, undefined, undefined, undefined, clampedVal);
     setEditingTargetId(null);
   };
+
+  // If there are no courses registered, show a premium empty slate screen
+  if (courses.length === 0) {
+    return (
+      <div className="space-y-8 animate-fade-in">
+        {/* Dynamic Header */}
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 animate-fade-in">
+          <div>
+            <h2 className={`font-serif italic tracking-tight text-3xl md:text-4xl ${isDark ? 'text-[#D4A373]' : 'text-[#5A5A40]'}`}>
+              Dashboard Hub
+            </h2>
+            <p className="font-sans text-xs mt-1.5 uppercase tracking-wider opacity-60">
+              Welcome to Studbuddy! Fall Academic Term · Tue, Oct 15, 2026
+            </p>
+          </div>
+        </div>
+
+        {/* Empty Slate Card */}
+        <div className={`rounded-[32px] p-8 md:p-12 border text-center flex flex-col items-center justify-center space-y-6 ${
+          isDark ? 'bg-[#25251F] border-[#2D2D25]' : 'bg-white border-black/5'
+        }`}>
+          <div className={`p-4 rounded-2xl ${
+            isDark ? 'bg-[#829653]/10 text-[#829653]' : 'bg-[#606C38]/10 text-[#606C38]'
+          }`}>
+            <BookOpen size={48} className="animate-pulse" />
+          </div>
+
+          <div className="max-w-md space-y-2">
+            <h3 className={`font-serif italic text-2xl font-bold ${isDark ? 'text-white' : 'text-[#2D2D2D]'}`}>
+              Your academic slate is clean
+            </h3>
+            <p className="text-sm opacity-70">
+              Get started by adding your registered courses for this semester, or import our curated university test-data preset to instantly explore the app's analytical tools.
+            </p>
+          </div>
+
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-4 w-full sm:w-auto">
+            <button
+              onClick={() => onNavigateToTab('courses')}
+              className={`w-full sm:w-auto py-3 px-6 font-bold rounded-2xl flex items-center justify-center gap-2 cursor-pointer transition-all active:scale-98 ${
+                isDark 
+                  ? 'bg-[#829653] text-[#1C1C16] hover:opacity-90' 
+                  : 'bg-[#606C38] text-white hover:opacity-90'
+              }`}
+            >
+              <LayoutDashboard size={16} />
+              <span>Add Your First Course</span>
+            </button>
+
+            {onImportDemoData && (
+              <button
+                onClick={onImportDemoData}
+                className={`w-full sm:w-auto py-3 px-6 font-bold rounded-2xl flex items-center justify-center gap-2 cursor-pointer transition-all border ${
+                  isDark 
+                    ? 'border-[#2D2D25] bg-[#1C1C16] text-[#D4A373] hover:bg-[#25251F]' 
+                    : 'border-black/5 bg-[#F5F5F0] text-[#5A5A40] hover:bg-[#EAEAE2]'
+                }`}
+              >
+                <Sparkles size={16} className="text-amber-500 animate-pulse" />
+                <span>Seed Sandbox Preset Data</span>
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   const handleSaveGlobalTarget = () => {
     const clampedVal = Math.max(0, Math.min(100, globalTargetVal));
@@ -463,28 +576,108 @@ export default function DashboardView({
             </div>
           </div>
 
-          {/* Practical Advisor Widget */}
-          <div className={`rounded-[32px] p-6 border flex flex-col justify-between ${
-            isDark ? 'bg-[#25251F] border-[#2D2D25]' : 'bg-white border-black/5'
-          }`}>
-            <h3 className="text-[10px] font-bold uppercase tracking-wider opacity-60 mb-3">Vibe check & tips</h3>
-            <div className="space-y-3.5 text-xs">
-              <div className="flex gap-2.5">
-                <p className="opacity-80">
-                  <strong>Trend is rising:</strong> Your average rose by 1.2% this week thanks to perfect attendance in Data Structures.
-                </p>
+          {/* Notes & Reminders Panel */}
+          <div
+            id="notes-panel-container"
+            className={`rounded-[32px] p-6 border flex flex-col justify-between ${
+              isDark ? 'bg-[#25251F] border-[#2D2D25]' : 'bg-white border-black/5'
+            }`}
+          >
+            <div>
+              <div className="flex items-center justify-between mb-4 border-b border-black/[0.04] dark:border-[#2D2D25] pb-3">
+                <div className="flex items-center gap-2">
+                  <span className={`p-1.5 rounded-lg ${
+                    isDark ? 'bg-[#829653]/10 text-[#829653]' : 'bg-[#606C38]/10 text-[#606C38]'
+                  }`}>
+                    <Pin size={14} className="rotate-45" />
+                  </span>
+                  <h3 className={`font-serif italic text-sm font-bold ${isDark ? 'text-white' : 'text-[#2D2D2D]'}`}>
+                    Notes & Reminders
+                  </h3>
+                </div>
+                <span className="text-[10px] uppercase tracking-wider opacity-60 font-mono font-bold">
+                  {notes.filter(n => !n.completed).length} Pending
+                </span>
               </div>
-              <div className="flex gap-2.5">
-                <p className="opacity-80">
-                  <strong>Calculus Strategy:</strong> Try to attend the next 2 Tuesday lectures consecutively to clear your current Warning status.
-                </p>
-              </div>
-              <div className="flex gap-2.5">
-                <p className="opacity-80">
-                  <strong>Risk Free:</strong> You have a safe cushion of <strong>4 skips</strong> in Modern Physics if you have external errands.
-                </p>
+
+              {/* Notes List */}
+              <div className="space-y-2.5 max-h-[160px] overflow-y-auto pr-1 flex-1 custom-scrollbar">
+                {notes.length === 0 ? (
+                  <div className="py-6 text-center">
+                    <p className="text-[11px] opacity-50 italic">
+                      No active reminders. Type below to pin a study goal or class task...
+                    </p>
+                  </div>
+                ) : (
+                  notes.map((note) => (
+                    <div
+                      key={note.id}
+                      className={`flex items-start justify-between gap-2.5 p-2.5 rounded-xl border transition-all ${
+                        note.completed
+                          ? 'opacity-40 line-through border-transparent bg-transparent'
+                          : isDark
+                            ? 'bg-[#1C1C16] border-[#2D2D25] hover:border-[#8C8C70]/30'
+                            : 'bg-[#F5F5F0] border-black/[0.03] hover:border-[#5A5A40]/30'
+                      }`}
+                    >
+                      <button
+                        onClick={() => handleToggleNote(note.id)}
+                        className={`mt-0.5 cursor-pointer shrink-0 transition-colors ${
+                          isDark ? 'text-[#829653] hover:text-[#9BB268]' : 'text-[#606C38] hover:text-[#7A8A4B]'
+                        }`}
+                      >
+                        {note.completed ? <CheckSquare size={14} /> : <Square size={14} />}
+                      </button>
+                      
+                      <span className={`text-xs flex-1 break-words font-sans text-left ${
+                        note.completed ? 'line-through text-stone-500' : isDark ? 'text-[#D1D1C6]' : 'text-[#2D2D2D]'
+                      }`}>
+                        {note.text}
+                      </span>
+
+                      <button
+                        onClick={() => handleDeleteNote(note.id)}
+                        className="text-stone-400 hover:text-rose-500 dark:hover:text-rose-400 transition-colors cursor-pointer mt-0.5 shrink-0"
+                        title="Delete reminder"
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
+                  ))
+                )}
               </div>
             </div>
+
+            {/* Notes Input Field */}
+            <form id="note-add-form" onSubmit={handleAddNote} className="mt-4 pt-3 border-t border-black/[0.04] dark:border-[#2D2D25] flex gap-2">
+              <input
+                id="note-input"
+                type="text"
+                value={newNoteText}
+                onChange={(e) => setNewNoteText(e.target.value)}
+                placeholder="Add study reminder..."
+                maxLength={80}
+                className={`flex-grow px-3 py-2 text-xs rounded-xl border outline-none font-medium transition-all ${
+                  isDark
+                    ? 'bg-[#1C1C16] border-[#2D2D25] text-white focus:border-[#8C8C70]'
+                    : 'bg-[#F5F5F0] border-black/5 text-[#2D2D2D] focus:bg-white focus:border-[#5A5A40]'
+                }`}
+              />
+              <button
+                id="note-submit-btn"
+                type="submit"
+                disabled={!newNoteText.trim()}
+                className={`p-2 rounded-xl flex items-center justify-center transition-all cursor-pointer ${
+                  newNoteText.trim()
+                    ? isDark
+                      ? 'bg-[#829653] text-[#1C1C16] hover:opacity-90'
+                      : 'bg-[#606C38] text-white hover:opacity-95'
+                    : 'bg-stone-300 text-stone-500 dark:bg-stone-800 dark:text-stone-600 cursor-not-allowed opacity-50'
+                }`}
+              >
+                <Plus size={16} />
+              </button>
+            </form>
           </div>
 
         </div>

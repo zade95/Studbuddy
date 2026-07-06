@@ -39,6 +39,7 @@ export interface UserSession {
   uid?: string;
   photoURL?: string;
   joinedAt: string;
+  isSandbox?: boolean;
 }
 
 export interface AttendanceCalculation {

@@ -21,7 +21,8 @@ import {
   saveCourse, 
   removeCourse, 
   saveScheduleSlot, 
-  removeScheduleSlot 
+  removeScheduleSlot,
+  handleRedirectResult
 } from './lib/firebase';
 
 export default function App() {
@@ -45,7 +46,7 @@ export default function App() {
         return JSON.parse(stored) as Course[];
       } catch (err) {}
     }
-    return DEFAULT_COURSES;
+    return [];
   });
 
   const [schedule, setSchedule] = useState<ScheduleSlot[]>(() => {
@@ -55,7 +56,7 @@ export default function App() {
         return JSON.parse(stored) as ScheduleSlot[];
       } catch (err) {}
     }
-    return DEFAULT_SCHEDULE;
+    return [];
   });
 
   const [currentTab, setCurrentTab] = useState<'dashboard' | 'analytics' | 'courses' | 'schedule'>('dashboard');
@@ -65,15 +66,11 @@ export default function App() {
 
   // Save courses and schedule to localStorage when they change
   useEffect(() => {
-    if (courses && courses.length > 0) {
-      localStorage.setItem('attend_iq_courses', JSON.stringify(courses));
-    }
+    localStorage.setItem('attend_iq_courses', JSON.stringify(courses));
   }, [courses]);
 
   useEffect(() => {
-    if (schedule && schedule.length > 0) {
-      localStorage.setItem('attend_iq_schedule', JSON.stringify(schedule));
-    }
+    localStorage.setItem('attend_iq_schedule', JSON.stringify(schedule));
   }, [schedule]);
 
   // Initialize theme and background auth sync on mount
@@ -86,6 +83,43 @@ export default function App() {
     } else {
       document.documentElement.classList.remove('dark');
     }
+
+    // Check Google Redirect Sign-In Result first for robust iframe fallback
+    const checkRedirect = async () => {
+      try {
+        const redirectUser = await handleRedirectResult();
+        if (redirectUser) {
+          const session: UserSession = {
+            email: redirectUser.email || '',
+            name: redirectUser.displayName || redirectUser.email?.split('@')[0] || 'Google User',
+            uid: redirectUser.uid,
+            photoURL: redirectUser.photoURL || undefined,
+            joinedAt: new Date().toISOString(),
+          };
+          setUser(session);
+          localStorage.setItem('attend_iq_user', JSON.stringify(session));
+          
+          setLoading(true);
+          try {
+            const dbCourses = await getCourses(redirectUser.uid);
+            if (dbCourses && dbCourses.length > 0) {
+              setCourses(dbCourses);
+            }
+            const dbSchedule = await getSchedule(redirectUser.uid);
+            if (dbSchedule && dbSchedule.length > 0) {
+              setSchedule(dbSchedule);
+            }
+          } catch (e) {
+            console.warn("Redirect database loading warning:", e);
+          } finally {
+            setLoading(false);
+          }
+        }
+      } catch (err) {
+        console.warn('Google Redirect sync error:', err);
+      }
+    };
+    checkRedirect();
 
     // 2. Authentication Recovery & Background Sync (Real-time Firebase Auth Sync)
     const unsubscribe = initAuth(
@@ -227,6 +261,27 @@ export default function App() {
     setCourses([]);
     setSchedule([]);
     localStorage.removeItem('attend_iq_user');
+    localStorage.removeItem('attend_iq_courses');
+    localStorage.removeItem('attend_iq_schedule');
+  };
+
+  const handleImportDemoData = async () => {
+    if (!user) return;
+    const userId = user.uid || 'user-' + user.email.split('@')[0].replace(/[^a-zA-Z0-9-]/g, '');
+    
+    setCourses(DEFAULT_COURSES);
+    setSchedule(DEFAULT_SCHEDULE);
+    
+    try {
+      for (const course of DEFAULT_COURSES) {
+        await saveCourse(userId, course);
+      }
+      for (const slot of DEFAULT_SCHEDULE) {
+        await saveScheduleSlot(userId, slot);
+      }
+    } catch (e) {
+      console.warn("Could not save demo data to Firestore:", e);
+    }
   };
 
   const handleAddCourse = async (newC: Omit<Course, 'id' | 'createdAt'>) => {
@@ -375,6 +430,7 @@ export default function App() {
             onUpdateCourse={handleUpdateCourse}
             onNavigateToTab={setCurrentTab}
             isDark={isDark}
+            onImportDemoData={handleImportDemoData}
           />
         )}
 
@@ -389,6 +445,7 @@ export default function App() {
             onDeleteCourse={handleDeleteCourse}
             onUpdateCourse={handleUpdateCourse}
             isDark={isDark}
+            onImportDemoData={handleImportDemoData}
           />
         )}
 

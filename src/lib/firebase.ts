@@ -2,6 +2,10 @@ import { initializeApp } from 'firebase/app';
 import { 
   getAuth, 
   signInWithPopup, 
+  signInWithRedirect,
+  getRedirectResult,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
   GoogleAuthProvider, 
   onAuthStateChanged, 
   User, 
@@ -146,6 +150,37 @@ export const anonymousSignIn = async (): Promise<User | null> => {
     console.warn('Anonymous sign in warning (handled fallback):', error);
     throw error;
   }
+};
+
+// Google Redirect Sign In helper
+export const googleSignInRedirect = async (): Promise<void> => {
+  await signInWithRedirect(auth, googleProvider);
+};
+
+// Handle redirect result on load
+export const handleRedirectResult = async (): Promise<User | null> => {
+  try {
+    const result = await getRedirectResult(auth);
+    if (result) {
+      const credential = GoogleAuthProvider.credentialFromResult(result);
+      cachedAccessToken = credential?.accessToken || '';
+      return result.user;
+    }
+  } catch (error) {
+    console.warn('Redirect sign in error:', error);
+  }
+  return null;
+};
+
+// Email & Password helpers
+export const signUpWithEmail = async (email: string, password: string): Promise<User> => {
+  const result = await createUserWithEmailAndPassword(auth, email, password);
+  return result.user;
+};
+
+export const signInWithEmail = async (email: string, password: string): Promise<User> => {
+  const result = await signInWithEmailAndPassword(auth, email, password);
+  return result.user;
 };
 
 // --- Firestore Database operations for Courses ---
