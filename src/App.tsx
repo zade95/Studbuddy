@@ -25,15 +25,58 @@ import {
 } from './lib/firebase';
 
 export default function App() {
-  const [user, setUser] = useState<UserSession | null>(null);
-  const [courses, setCourses] = useState<Course[]>([]);
-  const [schedule, setSchedule] = useState<ScheduleSlot[]>([]);
+  // Initialize state synchronously from localStorage to prevent delays or flashing loading screens
+  const [user, setUser] = useState<UserSession | null>(() => {
+    const stored = localStorage.getItem('attend_iq_user');
+    if (stored) {
+      try {
+        return JSON.parse(stored) as UserSession;
+      } catch (err) {
+        console.error('Failed to parse stored user:', err);
+      }
+    }
+    return null;
+  });
+
+  const [courses, setCourses] = useState<Course[]>(() => {
+    const stored = localStorage.getItem('attend_iq_courses');
+    if (stored) {
+      try {
+        return JSON.parse(stored) as Course[];
+      } catch (err) {}
+    }
+    return DEFAULT_COURSES;
+  });
+
+  const [schedule, setSchedule] = useState<ScheduleSlot[]>(() => {
+    const stored = localStorage.getItem('attend_iq_schedule');
+    if (stored) {
+      try {
+        return JSON.parse(stored) as ScheduleSlot[];
+      } catch (err) {}
+    }
+    return DEFAULT_SCHEDULE;
+  });
+
   const [currentTab, setCurrentTab] = useState<'dashboard' | 'analytics' | 'courses' | 'schedule'>('dashboard');
   const [isCalcOpen, setIsCalcOpen] = useState(false);
   const [isDark, setIsDark] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false); // Default to false to enable instant visual hydration
 
-  // Initialize theme and auth on mount
+  // Save courses and schedule to localStorage when they change
+  useEffect(() => {
+    if (courses && courses.length > 0) {
+      localStorage.setItem('attend_iq_courses', JSON.stringify(courses));
+    }
+  }, [courses]);
+
+  useEffect(() => {
+    if (schedule && schedule.length > 0) {
+      localStorage.setItem('attend_iq_schedule', JSON.stringify(schedule));
+    }
+  }, [schedule]);
+
+  // Initialize theme and background auth sync on mount
   useEffect(() => {
     // 1. Theme Configuration
     const storedTheme = localStorage.getItem('attend_iq_theme') === 'true';
@@ -44,7 +87,7 @@ export default function App() {
       document.documentElement.classList.remove('dark');
     }
 
-    // 2. Authentication Recovery (Real-time Firebase Auth Sync)
+    // 2. Authentication Recovery & Background Sync (Real-time Firebase Auth Sync)
     const unsubscribe = initAuth(
       async (firebaseUser, token) => {
         const session: UserSession = {
@@ -57,15 +100,21 @@ export default function App() {
         setUser(session);
         localStorage.setItem('attend_iq_user', JSON.stringify(session));
 
-        // Load account-specific courses from Firestore database
-        const dbCourses = await getCourses(firebaseUser.uid);
-        setCourses(dbCourses);
+        try {
+          // Load account-specific courses from Firestore database in the background
+          const dbCourses = await getCourses(firebaseUser.uid);
+          if (dbCourses && dbCourses.length > 0) {
+            setCourses(dbCourses);
+          }
 
-        // Load account-specific schedule from Firestore database
-        const dbSchedule = await getSchedule(firebaseUser.uid);
-        setSchedule(dbSchedule);
-
-        setLoading(false);
+          // Load account-specific schedule from Firestore database in the background
+          const dbSchedule = await getSchedule(firebaseUser.uid);
+          if (dbSchedule && dbSchedule.length > 0) {
+            setSchedule(dbSchedule);
+          }
+        } catch (e) {
+          console.warn("Background DB sync warning:", e);
+        }
       },
       () => {
         // Fallback or demo session restoration
@@ -75,22 +124,26 @@ export default function App() {
             const parsedUser = JSON.parse(storedUser) as UserSession;
             setUser(parsedUser);
             
-            const userKey = parsedUser.uid || 'demo-user-' + parsedUser.email.split('@')[0];
+            const userKey = parsedUser.uid || 'user-' + parsedUser.email.split('@')[0].replace(/[^a-zA-Z0-9-]/g, '');
             
             const fetchLocalDemoData = async () => {
-              const dbCourses = await getCourses(userKey);
-              setCourses(dbCourses);
-              const dbSchedule = await getSchedule(userKey);
-              setSchedule(dbSchedule);
-              setLoading(false);
+              try {
+                const dbCourses = await getCourses(userKey);
+                if (dbCourses && dbCourses.length > 0) {
+                  setCourses(dbCourses);
+                }
+                const dbSchedule = await getSchedule(userKey);
+                if (dbSchedule && dbSchedule.length > 0) {
+                  setSchedule(dbSchedule);
+                }
+              } catch (e) {
+                console.warn("Background user DB sync warning:", e);
+              }
             };
             fetchLocalDemoData();
           } catch (err) {
             console.error('Failed to parse cached session:', err);
-            setLoading(false);
           }
-        } else {
-          setLoading(false);
         }
       }
     );
@@ -114,14 +167,55 @@ export default function App() {
     localStorage.setItem('attend_iq_user', JSON.stringify(session));
     setLoading(true);
 
-    const userId = session.uid || 'demo-user-' + session.email.split('@')[0];
+    const userId = session.uid || 'user-' + session.email.split('@')[0].replace(/[^a-zA-Z0-9-]/g, '');
 
-    // Load custom courses and schedule from Firestore
-    const dbCourses = await getCourses(userId);
-    setCourses(dbCourses);
+    try {
+      // Load custom courses from Firestore
+      const dbCourses = await getCourses(userId);
+      if (dbCourses && dbCourses.length > 0) {
+        setCourses(dbCourses);
+      } else {
+        // Fallback to local storage if Firestore returned empty but we have local cache
+        const stored = localStorage.getItem('attend_iq_courses');
+        if (stored) {
+          try {
+            setCourses(JSON.parse(stored));
+          } catch (e) {}
+        }
+      }
+    } catch (err) {
+      console.warn("Could not load courses from Firestore on login, falling back to local cache:", err);
+      const stored = localStorage.getItem('attend_iq_courses');
+      if (stored) {
+        try {
+          setCourses(JSON.parse(stored));
+        } catch (e) {}
+      }
+    }
 
-    const dbSchedule = await getSchedule(userId);
-    setSchedule(dbSchedule);
+    try {
+      // Load custom schedule from Firestore
+      const dbSchedule = await getSchedule(userId);
+      if (dbSchedule && dbSchedule.length > 0) {
+        setSchedule(dbSchedule);
+      } else {
+        // Fallback to local storage if Firestore returned empty but we have local cache
+        const stored = localStorage.getItem('attend_iq_schedule');
+        if (stored) {
+          try {
+            setSchedule(JSON.parse(stored));
+          } catch (e) {}
+        }
+      }
+    } catch (err) {
+      console.warn("Could not load schedule from Firestore on login, falling back to local cache:", err);
+      const stored = localStorage.getItem('attend_iq_schedule');
+      if (stored) {
+        try {
+          setSchedule(JSON.parse(stored));
+        } catch (e) {}
+      }
+    }
 
     setLoading(false);
     setCurrentTab('dashboard');
@@ -137,7 +231,7 @@ export default function App() {
 
   const handleAddCourse = async (newC: Omit<Course, 'id' | 'createdAt'>) => {
     if (!user) return;
-    const userId = user.uid || 'demo-user-' + user.email.split('@')[0];
+    const userId = user.uid || 'user-' + user.email.split('@')[0].replace(/[^a-zA-Z0-9-]/g, '');
     const course: Course = {
       ...newC,
       id: 'course-' + Date.now(),
@@ -147,22 +241,34 @@ export default function App() {
     const nextCourses = [course, ...courses];
     setCourses(nextCourses);
 
-    await saveCourse(userId, course);
+    try {
+      await saveCourse(userId, course);
+    } catch (e) {
+      console.warn("Could not save course to Firestore, local state preserved:", e);
+    }
   };
 
   const handleDeleteCourse = async (id: string) => {
     if (!user) return;
-    const userId = user.uid || 'demo-user-' + user.email.split('@')[0];
+    const userId = user.uid || 'user-' + user.email.split('@')[0].replace(/[^a-zA-Z0-9-]/g, '');
     
     const nextCourses = courses.filter(c => c.id !== id);
     setCourses(nextCourses);
 
-    await removeCourse(userId, id);
+    try {
+      await removeCourse(userId, id);
+    } catch (e) {
+      console.warn("Could not remove course from Firestore, local state preserved:", e);
+    }
 
     // Clean up schedule slots tied to this deleted course
     const slotsToDelete = schedule.filter(s => s.courseId === id);
     for (const slot of slotsToDelete) {
-      await removeScheduleSlot(userId, slot.id);
+      try {
+        await removeScheduleSlot(userId, slot.id);
+      } catch (e) {
+        console.warn("Could not remove schedule slot from Firestore, local state preserved:", e);
+      }
     }
     setSchedule(prev => prev.filter(s => s.courseId !== id));
   };
@@ -177,7 +283,7 @@ export default function App() {
     required_percent?: number
   ) => {
     if (!user) return;
-    const userId = user.uid || 'demo-user-' + user.email.split('@')[0];
+    const userId = user.uid || 'user-' + user.email.split('@')[0].replace(/[^a-zA-Z0-9-]/g, '');
     
     const nextCourses = courses.map(c => {
       if (c.id === id) {
@@ -197,27 +303,35 @@ export default function App() {
 
     const updatedCourse = nextCourses.find(c => c.id === id);
     if (updatedCourse) {
-      await saveCourse(userId, updatedCourse);
+      try {
+        await saveCourse(userId, updatedCourse);
+      } catch (e) {
+        console.warn("Could not update course in Firestore, local state preserved:", e);
+      }
     }
   };
 
   const handleUpdateSchedule = async (nextSchedule: ScheduleSlot[]) => {
     if (!user) return;
-    const userId = user.uid || 'demo-user-' + user.email.split('@')[0];
+    const userId = user.uid || 'user-' + user.email.split('@')[0].replace(/[^a-zA-Z0-9-]/g, '');
     
     setSchedule(nextSchedule);
 
-    // Sync database: Save current layout and prune removed ones
-    const originalSlots = await getSchedule(userId);
-    
-    for (const slot of nextSchedule) {
-      await saveScheduleSlot(userId, slot);
-    }
+    try {
+      // Sync database: Save current layout and prune removed ones
+      const originalSlots = await getSchedule(userId);
+      
+      for (const slot of nextSchedule) {
+        await saveScheduleSlot(userId, slot);
+      }
 
-    const nextIds = nextSchedule.map(s => s.id);
-    const slotsToRemove = originalSlots.filter(s => !nextIds.includes(s.id));
-    for (const slot of slotsToRemove) {
-      await removeScheduleSlot(userId, slot.id);
+      const nextIds = nextSchedule.map(s => s.id);
+      const slotsToRemove = originalSlots.filter(s => !nextIds.includes(s.id));
+      for (const slot of slotsToRemove) {
+        await removeScheduleSlot(userId, slot.id);
+      }
+    } catch (e) {
+      console.warn("Could not sync schedule with Firestore, local state preserved:", e);
     }
   };
 

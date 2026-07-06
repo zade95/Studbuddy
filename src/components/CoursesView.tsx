@@ -36,16 +36,19 @@ export default function CoursesView({
   const [newAttended, setNewAttended] = useState(0);
   const [addError, setAddError] = useState('');
 
-  // Selected course details state (for logging or manual edits)
+  // Selected course details state
   const [selectedCourseId, setSelectedCourseId] = useState<string | null>(null);
-  const [isEditingManual, setIsEditingManual] = useState(false);
-  const [manualHeld, setManualHeld] = useState(0);
-  const [manualAttended, setManualAttended] = useState(0);
-  const [manualName, setManualName] = useState('');
-  const [manualProfessor, setManualProfessor] = useState('');
-  const [manualCredits, setManualCredits] = useState(3.0);
-  const [manualRequiredPercent, setManualRequiredPercent] = useState(75);
-  const [manualError, setManualError] = useState('');
+
+  // Modal State for editing course
+  const [isEditOpen, setIsEditOpen] = useState(false);
+  const [editingCourseId, setEditingCourseId] = useState<string | null>(null);
+  const [editCourseName, setEditCourseName] = useState('');
+  const [editProfessor, setEditProfessor] = useState('');
+  const [editCredits, setEditCredits] = useState(3.0);
+  const [editRequiredPercent, setEditRequiredPercent] = useState(75);
+  const [editHeld, setEditHeld] = useState(0);
+  const [editAttended, setEditAttended] = useState(0);
+  const [editError, setEditError] = useState('');
 
   const handleOpenAdd = () => {
     setNewCourseName('');
@@ -96,19 +99,8 @@ export default function CoursesView({
   const handleToggleDetails = (id: string) => {
     if (selectedCourseId === id) {
       setSelectedCourseId(null);
-      setIsEditingManual(false);
     } else {
       setSelectedCourseId(id);
-      setIsEditingManual(false);
-      const course = courses.find(c => c.id === id);
-      if (course) {
-        setManualHeld(course.held);
-        setManualAttended(course.attended);
-        setManualName(course.name);
-        setManualProfessor(course.professor);
-        setManualCredits(course.credits);
-        setManualRequiredPercent(course.required_percent);
-      }
     }
   };
 
@@ -124,37 +116,48 @@ export default function CoursesView({
     }
 
     onUpdateCourse(courseId, newH, newA);
-    
-    // Sync state if currently editing manually
-    setManualHeld(newH);
-    setManualAttended(newA);
   };
 
-  const handleSaveManual = (courseId: string) => {
-    if (!manualName.trim()) {
-      setManualError('Please enter a course name');
+  const handleOpenEdit = (course: Course) => {
+    setEditingCourseId(course.id);
+    setEditCourseName(course.name);
+    setEditProfessor(course.professor);
+    setEditCredits(course.credits);
+    setEditRequiredPercent(course.required_percent);
+    setEditHeld(course.held);
+    setEditAttended(course.attended);
+    setEditError('');
+    setIsEditOpen(true);
+  };
+
+  const handleUpdateCourseSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingCourseId) return;
+    if (!editCourseName.trim()) {
+      setEditError('Please enter a course name');
       return;
     }
-    if (manualAttended > manualHeld) {
-      setManualError('Attended classes cannot exceed classes held');
+    if (editAttended > editHeld) {
+      setEditError('Attended classes cannot exceed classes held');
       return;
     }
-    if (manualHeld < 0 || manualAttended < 0) {
-      setManualError('Classes count cannot be negative');
+    if (editHeld < 0 || editAttended < 0) {
+      setEditError('Classes count cannot be negative');
       return;
     }
 
     onUpdateCourse(
-      courseId,
-      Number(manualHeld),
-      Number(manualAttended),
-      manualName.trim(),
-      manualProfessor.trim() || 'TBA',
-      Number(manualCredits) || 3.0,
-      Number(manualRequiredPercent) || 75
+      editingCourseId,
+      Number(editHeld),
+      Number(editAttended),
+      editCourseName.trim(),
+      editProfessor.trim() || 'TBA',
+      Number(editCredits),
+      Number(editRequiredPercent)
     );
-    setIsEditingManual(false);
-    setManualError('');
+
+    setIsEditOpen(false);
+    setEditingCourseId(null);
   };
 
   return (
@@ -275,174 +278,47 @@ export default function CoursesView({
                     </div>
 
                     {/* Quick +1 Loggers vs Manual Edit form */}
-                    {!isEditingManual ? (
-                      <div className="space-y-2.5">
-                        <span className="text-[10px] font-bold uppercase tracking-wider opacity-55 block">Log attendance for today</span>
-                        <div className="grid grid-cols-2 gap-2">
-                          <button
-                            onClick={() => handleQuickIncrement(course.id, 'attended')}
-                            className={`py-2.5 px-3 font-bold rounded-2xl transition-all cursor-pointer text-center text-xs ${
-                              isDark 
-                                ? 'bg-[#829653] text-[#1C1C16] hover:opacity-90' 
-                                : 'bg-[#606C38] text-white hover:opacity-95'
-                            }`}
-                          >
-                            + Attended Class
-                          </button>
-                          <button
-                            onClick={() => handleQuickIncrement(course.id, 'skipped')}
-                            className={`py-2.5 px-3 font-bold rounded-2xl transition-all cursor-pointer text-center text-xs ${
-                              isDark 
-                                ? 'bg-[#D18E4E] text-[#1C1C16] hover:opacity-90' 
-                                : 'bg-[#BC6C25] text-white hover:opacity-95'
-                            }`}
-                          >
-                            + Skipped Class
-                          </button>
-                        </div>
+                    <div className="space-y-2.5">
+                      <span className="text-[10px] font-bold uppercase tracking-wider opacity-55 block">Log attendance for today</span>
+                      <div className="grid grid-cols-2 gap-2">
                         <button
-                          onClick={() => setIsEditingManual(true)}
-                          className={`w-full py-2.5 border rounded-2xl transition-colors font-bold text-center text-xs cursor-pointer ${
+                          onClick={() => handleQuickIncrement(course.id, 'attended')}
+                          className={`py-2.5 px-3 font-bold rounded-2xl transition-all cursor-pointer text-center text-xs ${
                             isDark 
-                              ? 'border-[#2D2D25] hover:bg-[#1C1C16] text-[#D1D1C6]' 
-                              : 'border-black/5 hover:bg-[#F5F5F0] text-[#5A5A40]'
+                              ? 'bg-[#829653] text-[#1C1C16] hover:opacity-90' 
+                              : 'bg-[#606C38] text-white hover:opacity-95'
                           }`}
                         >
-                          ✏️ Manual Edit (Type Counts)
+                          + Attended Class
+                        </button>
+                        <button
+                          onClick={() => handleQuickIncrement(course.id, 'skipped')}
+                          className={`py-2.5 px-3 font-bold rounded-2xl transition-all cursor-pointer text-center text-xs ${
+                            isDark 
+                              ? 'bg-[#D18E4E] text-[#1C1C16] hover:opacity-90' 
+                              : 'bg-[#BC6C25] text-white hover:opacity-95'
+                          }`}
+                        >
+                          + Skipped Class
                         </button>
                       </div>
-                    ) : (
-                      <div className={`space-y-4 p-4 rounded-2xl border ${
-                        isDark ? 'bg-[#1C1C16] border-[#2D2D25]' : 'bg-[#F5F5F0] border-black/5'
-                      }`}>
-                        <div className="flex items-center justify-between border-b border-black/[0.04] dark:border-white/[0.04] pb-2">
-                          <span className="text-[10px] font-bold uppercase tracking-wider opacity-75">Edit Course & Attendance Details</span>
-                          <span className="text-[9px] opacity-55">Changes apply instantly</span>
-                        </div>
-
-                        <div className="space-y-3">
-                          {/* Course Name Input */}
-                          <div>
-                            <label className="text-[10px] opacity-75 mb-1 block font-bold">Subject / Course Name</label>
-                            <input
-                              type="text"
-                              value={manualName}
-                              onChange={(e) => setManualName(e.target.value)}
-                              placeholder="e.g. Modern Physics"
-                              className={`w-full py-2 px-3 border rounded-xl outline-none text-xs font-serif ${
-                                isDark ? 'bg-[#25251F] border-[#2D2D25]' : 'bg-white border-black/5'
-                              }`}
-                            />
-                          </div>
-
-                          {/* Professor / Instructor Name */}
-                          <div>
-                            <label className="text-[10px] opacity-75 mb-1 block font-bold">Professor Name</label>
-                            <input
-                              type="text"
-                              value={manualProfessor}
-                              onChange={(e) => setManualProfessor(e.target.value)}
-                              placeholder="e.g. Dr. Richard Feynman"
-                              className={`w-full py-2 px-3 border rounded-xl outline-none text-xs ${
-                                isDark ? 'bg-[#25251F] border-[#2D2D25]' : 'bg-white border-black/5'
-                              }`}
-                            />
-                          </div>
-
-                          {/* Row 1: Credits and Required Percent */}
-                          <div className="grid grid-cols-2 gap-3">
-                            <div>
-                              <label className="text-[10px] opacity-75 mb-1 block font-bold">Credits</label>
-                              <input
-                                type="number"
-                                min="1"
-                                max="10"
-                                step="0.5"
-                                value={manualCredits}
-                                onChange={(e) => setManualCredits(Number(e.target.value) || 3)}
-                                className={`w-full py-2 px-3 border rounded-xl outline-none text-xs ${
-                                  isDark ? 'bg-[#25251F] border-[#2D2D25]' : 'bg-white border-black/5'
-                                }`}
-                              />
-                            </div>
-                            <div>
-                              <label className="text-[10px] opacity-75 mb-1 block font-bold">Required %</label>
-                              <input
-                                type="number"
-                                min="0"
-                                max="100"
-                                value={manualRequiredPercent}
-                                onChange={(e) => setManualRequiredPercent(Math.min(100, Math.max(0, parseInt(e.target.value) || 0)))}
-                                className={`w-full py-2 px-3 border rounded-xl outline-none text-xs ${
-                                  isDark ? 'bg-[#25251F] border-[#2D2D25]' : 'bg-white border-black/5'
-                                }`}
-                              />
-                            </div>
-                          </div>
-
-                          {/* Row 2: Held and Attended classes */}
-                          <div className="grid grid-cols-2 gap-3">
-                            <div>
-                              <label className="text-[10px] opacity-75 mb-1 block font-bold">Classes Held</label>
-                              <input
-                                type="number"
-                                min="0"
-                                value={manualHeld}
-                                onChange={(e) => setManualHeld(Math.max(0, parseInt(e.target.value) || 0))}
-                                className={`w-full py-2 px-3 border rounded-xl outline-none text-xs ${
-                                  isDark ? 'bg-[#25251F] border-[#2D2D25]' : 'bg-white border-black/5'
-                                }`}
-                              />
-                            </div>
-                            <div>
-                              <label className="text-[10px] opacity-75 mb-1 block font-bold">Classes Attended</label>
-                              <input
-                                type="number"
-                                min="0"
-                                value={manualAttended}
-                                onChange={(e) => setManualAttended(Math.max(0, parseInt(e.target.value) || 0))}
-                                className={`w-full py-2 px-3 border rounded-xl outline-none text-xs ${
-                                  isDark ? 'bg-[#25251F] border-[#2D2D25]' : 'bg-white border-black/5'
-                                }`}
-                              />
-                            </div>
-                          </div>
-                        </div>
-
-                        {manualError && (
-                          <p className="text-rose-600 text-[10px] font-semibold">{manualError}</p>
-                        )}
-
-                        <div className="grid grid-cols-2 gap-2 pt-1">
-                          <button
-                            onClick={() => handleSaveManual(course.id)}
-                            className={`py-2 text-xs font-bold rounded-xl cursor-pointer flex items-center justify-center gap-1.5 ${
-                              isDark ? 'bg-[#8C8C70] text-[#1C1C16]' : 'bg-[#5A5A40] text-white'
-                            }`}
-                          >
-                            <Save size={12} />
-                            <span>Save Changes</span>
-                          </button>
-                          <button
-                            onClick={() => {
-                              setIsEditingManual(false);
-                              setManualError('');
-                            }}
-                            className={`py-2 text-xs font-bold rounded-xl border cursor-pointer ${
-                              isDark ? 'border-[#2D2D25] hover:bg-[#25251F]' : 'border-black/5 hover:bg-white'
-                            }`}
-                          >
-                            Cancel
-                          </button>
-                        </div>
-                      </div>
-                    )}
+                      <button
+                        onClick={() => handleOpenEdit(course)}
+                        className={`w-full py-2.5 border rounded-2xl transition-colors font-bold text-center text-xs cursor-pointer ${
+                          isDark 
+                            ? 'border-[#2D2D25] hover:bg-[#1C1C16] text-[#D1D1C6]' 
+                            : 'border-black/5 hover:bg-[#F5F5F0] text-[#5A5A40]'
+                        }`}
+                      >
+                        ✏️ Edit Course & Attendance Counts
+                      </button>
+                    </div>
 
                     {/* Permanent Delete Button */}
                     <div className="flex justify-end pt-2">
                       <button
                         onClick={() => onDeleteCourse(course.id)}
-                        className="text-rose-600 hover:opacity-80 font-bold flex items-center gap-1 cursor-pointer py-1 px-2 rounded-lg"
+                        className="text-rose-600 hover:opacity-80 font-bold flex items-center gap-1 cursor-pointer py-1 px-2 rounded-lg text-xs"
                         title="Delete Course permanently"
                       >
                         <Trash2 size={13} />
@@ -608,6 +484,234 @@ export default function CoursesView({
                 <button
                   type="button"
                   onClick={() => setIsAddOpen(false)}
+                  className={`py-3 px-4 text-sm font-bold border rounded-2xl cursor-pointer ${
+                    isDark 
+                      ? 'border-[#2D2D25] hover:bg-[#1C1C16]' 
+                      : 'border-black/5 hover:bg-[#F5F5F0]'
+                  }`}
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ================= EDIT COURSE MODAL ================= */}
+      {isEditOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className={`w-full max-w-md rounded-[32px] border flex flex-col transition-all overflow-hidden ${
+            isDark 
+              ? 'bg-[#25251F] border-[#2D2D25] text-[#D1D1C6] shadow-lg' 
+              : 'bg-white border-black/5 text-[#2D2D2D] shadow-sm'
+          }`}>
+            <div className="flex items-center justify-between p-5 border-b border-black/5 dark:border-[#2D2D25]">
+              <div className="flex items-center gap-2">
+                <Edit2 size={20} className={isDark ? 'text-[#D4A373]' : 'text-[#5A5A40]'} />
+                <h3 className="font-serif italic text-lg">Edit Subject Details</h3>
+              </div>
+              <button 
+                onClick={() => {
+                  setIsEditOpen(false);
+                  setEditingCourseId(null);
+                }}
+                className="p-1.5 rounded-xl hover:bg-black/5 dark:hover:bg-[#1C1C16] cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handleUpdateCourseSubmit} className="p-6 space-y-4 max-h-[85vh] overflow-y-auto">
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider mb-1.5 opacity-75">Subject Name</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Advanced Calculus"
+                  value={editCourseName}
+                  onChange={(e) => setEditCourseName(e.target.value)}
+                  className={`w-full py-2.5 px-3 rounded-2xl border text-sm outline-none transition-all ${
+                    isDark 
+                      ? 'bg-[#1C1C16] border-[#2D2D25] text-white focus:border-[#8C8C70]' 
+                      : 'bg-[#F5F5F0] border-black/5 text-[#2D2D2D] focus:bg-white focus:border-[#5A5A40]'
+                  }`}
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider mb-1.5 opacity-75">Professor / Lecturer</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Prof. Alan Turing"
+                  value={editProfessor}
+                  onChange={(e) => setEditProfessor(e.target.value)}
+                  className={`w-full py-2.5 px-3 rounded-2xl border text-sm outline-none transition-all ${
+                    isDark 
+                      ? 'bg-[#1C1C16] border-[#2D2D25] text-white focus:border-[#8C8C70]' 
+                      : 'bg-[#F5F5F0] border-black/5 text-[#2D2D2D] focus:bg-white focus:border-[#5A5A40]'
+                  }`}
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider mb-1.5 opacity-75">Credits</label>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setEditCredits(prev => Math.max(0, prev - 0.5))}
+                      className={`w-8 h-8 rounded-lg border font-bold flex items-center justify-center shrink-0 text-sm ${
+                        isDark ? 'border-[#2D2D25] bg-[#1C1C16] hover:bg-[#25251F]' : 'border-black/5 bg-stone-100 hover:bg-stone-200'
+                      }`}
+                    >
+                      -
+                    </button>
+                    <input
+                      type="number"
+                      step="0.5"
+                      min="0"
+                      max="10"
+                      value={editCredits}
+                      onChange={(e) => setEditCredits(Math.max(0, Number(e.target.value) || 3.0))}
+                      className={`w-14 text-center py-1.5 border rounded-lg text-sm outline-none ${
+                        isDark ? 'bg-[#1C1C16] border-[#2D2D25]' : 'bg-white border-black/5'
+                      }`}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setEditCredits(prev => prev + 0.5)}
+                      className={`w-8 h-8 rounded-lg border font-bold flex items-center justify-center shrink-0 text-sm ${
+                        isDark ? 'border-[#2D2D25] bg-[#1C1C16] hover:bg-[#25251F]' : 'border-black/5 bg-stone-100 hover:bg-stone-200'
+                      }`}
+                    >
+                      +
+                    </button>
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider mb-1.5 opacity-75">Goal %</label>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setEditRequiredPercent(prev => Math.max(0, prev - 5))}
+                      className={`w-8 h-8 rounded-lg border font-bold flex items-center justify-center shrink-0 text-sm ${
+                        isDark ? 'border-[#2D2D25] bg-[#1C1C16] hover:bg-[#25251F]' : 'border-black/5 bg-stone-100 hover:bg-stone-200'
+                      }`}
+                    >
+                      -
+                    </button>
+                    <input
+                      type="number"
+                      min="0"
+                      max="100"
+                      value={editRequiredPercent}
+                      onChange={(e) => setEditRequiredPercent(Math.min(100, Math.max(0, parseInt(e.target.value) || 75)))}
+                      className={`w-14 text-center py-1.5 border rounded-lg text-sm outline-none ${
+                        isDark ? 'bg-[#1C1C16] border-[#2D2D25]' : 'bg-white border-black/5'
+                      }`}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setEditRequiredPercent(prev => Math.min(100, prev + 5))}
+                      className={`w-8 h-8 rounded-lg border font-bold flex items-center justify-center shrink-0 text-sm ${
+                        isDark ? 'border-[#2D2D25] bg-[#1C1C16] hover:bg-[#25251F]' : 'border-black/5 bg-stone-100 hover:bg-stone-200'
+                      }`}
+                    >
+                      +
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider mb-1.5 opacity-75">Classes Held</label>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setEditHeld(prev => Math.max(0, prev - 1))}
+                      className={`w-8 h-8 rounded-lg border font-bold flex items-center justify-center shrink-0 text-sm ${
+                        isDark ? 'border-[#2D2D25] bg-[#1C1C16] hover:bg-[#25251F]' : 'border-black/5 bg-stone-100 hover:bg-stone-200'
+                      }`}
+                    >
+                      -
+                    </button>
+                    <input
+                      type="number"
+                      min="0"
+                      value={editHeld}
+                      onChange={(e) => setEditHeld(Math.max(0, parseInt(e.target.value) || 0))}
+                      className={`w-14 text-center py-1.5 border rounded-lg text-sm outline-none ${
+                        isDark ? 'bg-[#1C1C16] border-[#2D2D25]' : 'bg-white border-black/5'
+                      }`}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setEditHeld(prev => prev + 1)}
+                      className={`w-8 h-8 rounded-lg border font-bold flex items-center justify-center shrink-0 text-sm ${
+                        isDark ? 'border-[#2D2D25] bg-[#1C1C16] hover:bg-[#25251F]' : 'border-black/5 bg-stone-100 hover:bg-stone-200'
+                      }`}
+                    >
+                      +
+                    </button>
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider mb-1.5 opacity-75">Classes Attended</label>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setEditAttended(prev => Math.max(0, prev - 1))}
+                      className={`w-8 h-8 rounded-lg border font-bold flex items-center justify-center shrink-0 text-sm ${
+                        isDark ? 'border-[#2D2D25] bg-[#1C1C16] hover:bg-[#25251F]' : 'border-black/5 bg-stone-100 hover:bg-stone-200'
+                      }`}
+                    >
+                      -
+                    </button>
+                    <input
+                      type="number"
+                      min="0"
+                      value={editAttended}
+                      onChange={(e) => setEditAttended(Math.max(0, parseInt(e.target.value) || 0))}
+                      className={`w-14 text-center py-1.5 border rounded-lg text-sm outline-none ${
+                        isDark ? 'bg-[#1C1C16] border-[#2D2D25]' : 'bg-white border-black/5'
+                      }`}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setEditAttended(prev => prev + 1)}
+                      className={`w-8 h-8 rounded-lg border font-bold flex items-center justify-center shrink-0 text-sm ${
+                        isDark ? 'border-[#2D2D25] bg-[#1C1C16] hover:bg-[#25251F]' : 'border-black/5 bg-stone-100 hover:bg-stone-200'
+                      }`}
+                    >
+                      +
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {editError && (
+                <p className="text-rose-600 text-xs font-semibold">{editError}</p>
+              )}
+
+              <div className="flex gap-2 pt-4 border-t border-black/5 dark:border-[#2D2D25]">
+                <button
+                  type="submit"
+                  className={`flex-1 py-3 text-sm font-bold rounded-2xl cursor-pointer ${
+                    isDark 
+                      ? 'bg-[#8C8C70] text-[#1C1C16]' 
+                      : 'bg-[#5A5A40] text-white'
+                  }`}
+                >
+                  Save Changes
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsEditOpen(false);
+                    setEditingCourseId(null);
+                  }}
                   className={`py-3 px-4 text-sm font-bold border rounded-2xl cursor-pointer ${
                     isDark 
                       ? 'border-[#2D2D25] hover:bg-[#1C1C16]' 
