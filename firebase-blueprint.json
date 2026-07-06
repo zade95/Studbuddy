@@ -1,0 +1,50 @@
+{
+  "entities": {
+    "Course": {
+      "title": "Course",
+      "description": "Represents an academic course tracked by the user",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "name": { "type": "string" },
+        "professor": { "type": "string" },
+        "credits": { "type": "number" },
+        "held": { "type": "number" },
+        "attended": { "type": "number" },
+        "required_percent": { "type": "number" },
+        "color": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "userId", "name", "professor", "credits", "held", "attended", "required_percent", "color", "createdAt"]
+    },
+    "ScheduleSlot": {
+      "title": "ScheduleSlot",
+      "description": "Represents a weekly class schedule slot",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "courseId": { "type": "string" },
+        "courseName": { "type": "string" },
+        "day": { "type": "string" },
+        "startTime": { "type": "string" },
+        "endTime": { "type": "string" },
+        "room": { "type": "string" },
+        "type": { "type": "string" },
+        "color": { "type": "string" }
+      },
+      "required": ["id", "userId", "courseId", "courseName", "day", "startTime", "endTime", "room", "type", "color"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}/courses/{courseId}": {
+      "schema": "Course",
+      "description": "List of courses tracked by a specific user"
+    },
+    "/users/{userId}/schedule/{slotId}": {
+      "schema": "ScheduleSlot",
+      "description": "Weekly schedule slots for a specific user"
+    }
+  }
+}

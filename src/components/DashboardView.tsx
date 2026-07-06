@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { LayoutDashboard, BookOpen, AlertTriangle, CheckCircle, Clock, MapPin, Calculator, TrendingUp } from 'lucide-react';
 import { Course, ScheduleSlot } from '../types';
 import { calculateAttendance } from '../lib/attendance';
@@ -26,6 +26,31 @@ export default function DashboardView({
   onNavigateToTab,
   isDark,
 }: DashboardViewProps) {
+  // State for editing target attendances
+  const [editingTargetId, setEditingTargetId] = useState<string | null>(null);
+  const [tempTargetVal, setTempTargetVal] = useState<number>(75);
+  
+  const [isEditingGlobalTarget, setIsEditingGlobalTarget] = useState<boolean>(false);
+  const [globalTargetVal, setGlobalTargetVal] = useState<number>(75);
+
+  const handleSaveTarget = (courseId: string) => {
+    const course = courses.find(c => c.id === courseId);
+    if (!course) return;
+    
+    // clamp between 0 and 100
+    const clampedVal = Math.max(0, Math.min(100, tempTargetVal));
+    onUpdateCourse(course.id, course.held, course.attended, undefined, undefined, undefined, clampedVal);
+    setEditingTargetId(null);
+  };
+
+  const handleSaveGlobalTarget = () => {
+    const clampedVal = Math.max(0, Math.min(100, globalTargetVal));
+    // Update target for ALL courses
+    courses.forEach(c => {
+      onUpdateCourse(c.id, c.held, c.attended, undefined, undefined, undefined, clampedVal);
+    });
+    setIsEditingGlobalTarget(false);
+  };
   // 1. Calculations
   const totalHeld = courses.reduce((acc, c) => acc + c.held, 0);
   const totalAttended = courses.reduce((acc, c) => acc + c.attended, 0);
@@ -247,13 +272,56 @@ export default function DashboardView({
                         <h4 className={`font-serif italic font-bold text-sm leading-snug ${isDark ? 'text-white' : 'text-[#2D2D2D]'}`}>
                           {course.name}
                         </h4>
-                        <div className="flex items-center gap-2 mt-1">
+                        <div className="flex items-center flex-wrap gap-2 mt-1">
                           <span className={`px-1.5 py-0.5 rounded text-[8px] font-bold uppercase tracking-wider ${statusBg} ${statusColor}`}>
                             {statusLabel}
                           </span>
                           <span className="text-[10px] opacity-60">
                             Logged: {course.attended}/{course.held} lectures
                           </span>
+                          <span className="text-[10px] opacity-30">•</span>
+                          {editingTargetId === course.id ? (
+                            <span className="flex items-center gap-1">
+                              <span className="text-[10px] opacity-60">Target:</span>
+                              <input
+                                type="number"
+                                min="0"
+                                max="100"
+                                value={tempTargetVal}
+                                onChange={(e) => setTempTargetVal(Number(e.target.value))}
+                                className={`w-12 px-1 py-0.5 text-[10px] font-bold rounded border outline-none ${
+                                  isDark ? 'bg-[#1C1C16] border-[#8C8C70]/40 text-white' : 'bg-white border-[#5A5A40]/40 text-stone-900'
+                                }`}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') {
+                                    handleSaveTarget(course.id);
+                                  } else if (e.key === 'Escape') {
+                                    setEditingTargetId(null);
+                                  }
+                                }}
+                                autoFocus
+                              />
+                              <span className="text-[10px] opacity-60">%</span>
+                              <button
+                                onClick={() => handleSaveTarget(course.id)}
+                                className="text-emerald-500 hover:text-emerald-400 font-bold text-[10px]"
+                              >
+                                Save
+                              </button>
+                            </span>
+                          ) : (
+                            <button
+                              onClick={() => {
+                                setEditingTargetId(course.id);
+                                setTempTargetVal(course.required_percent);
+                              }}
+                              className="text-[10px] opacity-60 hover:opacity-100 flex items-center gap-1 group/btn cursor-pointer"
+                              title="Click to edit course target percentage"
+                            >
+                              <span>Target: <strong>{course.required_percent}%</strong></span>
+                              <span className="text-[8px] opacity-40 group-hover/btn:opacity-100 underline decoration-dotted">Edit</span>
+                            </button>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -338,11 +406,56 @@ export default function DashboardView({
 
               {/* Requirement bar label */}
               <div className="mt-4 text-center">
-                <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                  isOverallSafe ? 'bg-[#606C38]/15 text-[#606C38]' : 'bg-[#BC6C25]/15 text-[#BC6C25]'
-                }`}>
-                  Required Target: {Math.round(avgRequired)}%
-                </span>
+                {isEditingGlobalTarget ? (
+                  <div className="flex items-center justify-center gap-1.5">
+                    <span className="text-[10px] opacity-60">Global target:</span>
+                    <input
+                      type="number"
+                      min="0"
+                      max="100"
+                      value={globalTargetVal}
+                      onChange={(e) => setGlobalTargetVal(Number(e.target.value))}
+                      className={`w-12 px-1 py-0.5 text-[10px] font-bold rounded border outline-none ${
+                        isDark ? 'bg-[#1C1C16] border-[#8C8C70]/40 text-white' : 'bg-white border-[#5A5A40]/40 text-stone-900'
+                      }`}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          handleSaveGlobalTarget();
+                        } else if (e.key === 'Escape') {
+                          setIsEditingGlobalTarget(false);
+                        }
+                      }}
+                      autoFocus
+                    />
+                    <span className="text-[10px] opacity-60">%</span>
+                    <button
+                      onClick={handleSaveGlobalTarget}
+                      className="text-emerald-500 hover:text-emerald-400 font-bold text-[10px]"
+                    >
+                      Apply
+                    </button>
+                    <button
+                      onClick={() => setIsEditingGlobalTarget(false)}
+                      className="text-stone-400 hover:text-stone-300 font-bold text-[10px]"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => {
+                      setIsEditingGlobalTarget(true);
+                      setGlobalTargetVal(Math.round(avgRequired));
+                    }}
+                    className={`px-2 py-1 rounded text-[10px] font-bold transition-all hover:scale-98 cursor-pointer flex items-center gap-1.5 mx-auto ${
+                      isOverallSafe ? 'bg-[#606C38]/15 text-[#606C38]' : 'bg-[#BC6C25]/15 text-[#BC6C25]'
+                    }`}
+                    title="Click to edit and apply target to all courses"
+                  >
+                    <span>Required Target: {Math.round(avgRequired)}%</span>
+                    <span className="text-[8px] opacity-50 underline decoration-dotted">Edit All</span>
+                  </button>
+                )}
                 <p className="text-[10px] opacity-60 mt-2 max-w-[200px] mx-auto">
                   Calculated as the average necessary percentage to sit in end-term examinations.
                 </p>
@@ -357,19 +470,16 @@ export default function DashboardView({
             <h3 className="text-[10px] font-bold uppercase tracking-wider opacity-60 mb-3">Vibe check & tips</h3>
             <div className="space-y-3.5 text-xs">
               <div className="flex gap-2.5">
-                <span className="text-base shrink-0">📊</span>
                 <p className="opacity-80">
                   <strong>Trend is rising:</strong> Your average rose by 1.2% this week thanks to perfect attendance in Data Structures.
                 </p>
               </div>
               <div className="flex gap-2.5">
-                <span className="text-base shrink-0">💡</span>
                 <p className="opacity-80">
                   <strong>Calculus Strategy:</strong> Try to attend the next 2 Tuesday lectures consecutively to clear your current Warning status.
                 </p>
               </div>
               <div className="flex gap-2.5">
-                <span className="text-base shrink-0">🚀</span>
                 <p className="opacity-80">
                   <strong>Risk Free:</strong> You have a safe cushion of <strong>4 skips</strong> in Modern Physics if you have external errands.
                 </p>

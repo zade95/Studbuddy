@@ -1,0 +1,72 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // Helper to validate Course entity on write
+    function isValidCourse(data) {
+      return data.keys().hasAll(['id', 'userId', 'name', 'professor', 'credits', 'held', 'attended', 'required_percent', 'color', 'createdAt'])
+        && data.keys().size() == 10
+        && data.id is string && data.id.size() <= 128
+        && data.userId is string && data.userId.size() <= 128
+        && data.name is string && data.name.size() <= 200
+        && data.professor is string && data.professor.size() <= 200
+        && data.credits is number
+        && data.held is number && data.held >= 0
+        && data.attended is number && data.attended >= 0
+        && data.required_percent is number && data.required_percent >= 0 && data.required_percent <= 100
+        && data.color is string && data.color.size() <= 64;
+    }
+
+    // Helper to validate ScheduleSlot
+    function isValidScheduleSlot(data) {
+      return data.keys().hasAll(['id', 'userId', 'courseId', 'courseName', 'day', 'startTime', 'endTime', 'room', 'type', 'color'])
+        && data.keys().size() == 10
+        && data.id is string && data.id.size() <= 128
+        && data.userId is string && data.userId.size() <= 128
+        && data.courseId is string && data.courseId.size() <= 128
+        && data.courseName is string && data.courseName.size() <= 200
+        && data.day is string && data.day.size() <= 64
+        && data.startTime is string && data.startTime.size() <= 64
+        && data.endTime is string && data.endTime.size() <= 64
+        && data.room is string && data.room.size() <= 200
+        && data.type is string && data.type.size() <= 64
+        && data.color is string && data.color.size() <= 64;
+    }
+
+
+
+    match /users/{userId} {
+      allow read, write: if isOwner(userId);
+
+      match /courses/{courseId} {
+        allow read: if isOwner(userId);
+        allow create, update: if isOwner(userId) && isValidId(courseId) && isValidCourse(request.resource.data);
+        allow delete: if isOwner(userId);
+      }
+
+      match /schedule/{slotId} {
+        allow read: if isOwner(userId);
+        allow create, update: if isOwner(userId) && isValidId(slotId) && isValidScheduleSlot(request.resource.data);
+        allow delete: if isOwner(userId);
+      }
+
+
+    }
+  }
+}

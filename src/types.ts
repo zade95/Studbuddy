@@ -36,6 +36,8 @@ export interface AttendanceLog {
 export interface UserSession {
   email: string;
   name?: string;
+  uid?: string;
+  photoURL?: string;
   joinedAt: string;
 }
 

@@ -13,11 +13,21 @@ import AnalyticsView from './components/AnalyticsView';
 import CoursesView from './components/CoursesView';
 import ScheduleView from './components/ScheduleView';
 import PredictionCalculator from './components/PredictionCalculator';
+import { 
+  initAuth, 
+  logout, 
+  getCourses, 
+  getSchedule, 
+  saveCourse, 
+  removeCourse, 
+  saveScheduleSlot, 
+  removeScheduleSlot 
+} from './lib/firebase';
 
 export default function App() {
   const [user, setUser] = useState<UserSession | null>(null);
-  const [courses, setCourses] = useState<Course[]>(DEFAULT_COURSES);
-  const [schedule, setSchedule] = useState<ScheduleSlot[]>(DEFAULT_SCHEDULE);
+  const [courses, setCourses] = useState<Course[]>([]);
+  const [schedule, setSchedule] = useState<ScheduleSlot[]>([]);
   const [currentTab, setCurrentTab] = useState<'dashboard' | 'analytics' | 'courses' | 'schedule'>('dashboard');
   const [isCalcOpen, setIsCalcOpen] = useState(false);
   const [isDark, setIsDark] = useState(false);
@@ -34,35 +44,58 @@ export default function App() {
       document.documentElement.classList.remove('dark');
     }
 
-    // 2. Authentication Recovery
-    const storedUser = localStorage.getItem('attend_iq_user');
-    if (storedUser) {
-      try {
-        const parsedUser = JSON.parse(storedUser) as UserSession;
-        setUser(parsedUser);
-        
-        // Load account-specific courses
-        const storedCourses = localStorage.getItem('attend_iq_courses_' + parsedUser.email);
-        if (storedCourses) {
-          setCourses(JSON.parse(storedCourses));
-        } else {
-          setCourses(DEFAULT_COURSES);
-          localStorage.setItem('attend_iq_courses_' + parsedUser.email, JSON.stringify(DEFAULT_COURSES));
-        }
+    // 2. Authentication Recovery (Real-time Firebase Auth Sync)
+    const unsubscribe = initAuth(
+      async (firebaseUser, token) => {
+        const session: UserSession = {
+          email: firebaseUser.email || '',
+          name: firebaseUser.displayName || firebaseUser.email?.split('@')[0],
+          uid: firebaseUser.uid,
+          photoURL: firebaseUser.photoURL || undefined,
+          joinedAt: new Date().toISOString(),
+        };
+        setUser(session);
+        localStorage.setItem('attend_iq_user', JSON.stringify(session));
 
-        // Load account-specific schedule
-        const storedSchedule = localStorage.getItem('attend_iq_schedule_' + parsedUser.email);
-        if (storedSchedule) {
-          setSchedule(JSON.parse(storedSchedule));
+        // Load account-specific courses from Firestore database
+        const dbCourses = await getCourses(firebaseUser.uid);
+        setCourses(dbCourses);
+
+        // Load account-specific schedule from Firestore database
+        const dbSchedule = await getSchedule(firebaseUser.uid);
+        setSchedule(dbSchedule);
+
+        setLoading(false);
+      },
+      () => {
+        // Fallback or demo session restoration
+        const storedUser = localStorage.getItem('attend_iq_user');
+        if (storedUser) {
+          try {
+            const parsedUser = JSON.parse(storedUser) as UserSession;
+            setUser(parsedUser);
+            
+            const userKey = parsedUser.uid || 'demo-user-' + parsedUser.email.split('@')[0];
+            
+            const fetchLocalDemoData = async () => {
+              const dbCourses = await getCourses(userKey);
+              setCourses(dbCourses);
+              const dbSchedule = await getSchedule(userKey);
+              setSchedule(dbSchedule);
+              setLoading(false);
+            };
+            fetchLocalDemoData();
+          } catch (err) {
+            console.error('Failed to parse cached session:', err);
+            setLoading(false);
+          }
         } else {
-          setSchedule(DEFAULT_SCHEDULE);
-          localStorage.setItem('attend_iq_schedule_' + parsedUser.email, JSON.stringify(DEFAULT_SCHEDULE));
+          setLoading(false);
         }
-      } catch (err) {
-        console.error('Failed to parse cached session:', err);
       }
-    }
-    setLoading(false);
+    );
+
+    return () => unsubscribe();
   }, []);
 
   const handleToggleTheme = () => {
@@ -76,55 +109,65 @@ export default function App() {
     }
   };
 
-  const handleLogin = (session: UserSession) => {
+  const handleLogin = async (session: UserSession) => {
     setUser(session);
     localStorage.setItem('attend_iq_user', JSON.stringify(session));
+    setLoading(true);
 
-    // Load or initialize account-specific courses
-    const stored = localStorage.getItem('attend_iq_courses_' + session.email);
-    if (stored) {
-      setCourses(JSON.parse(stored));
-    } else {
-      setCourses(DEFAULT_COURSES);
-      localStorage.setItem('attend_iq_courses_' + session.email, JSON.stringify(DEFAULT_COURSES));
-    }
+    const userId = session.uid || 'demo-user-' + session.email.split('@')[0];
 
-    // Load or initialize account-specific schedule
-    const storedSch = localStorage.getItem('attend_iq_schedule_' + session.email);
-    if (storedSch) {
-      setSchedule(JSON.parse(storedSch));
-    } else {
-      setSchedule(DEFAULT_SCHEDULE);
-      localStorage.setItem('attend_iq_schedule_' + session.email, JSON.stringify(DEFAULT_SCHEDULE));
-    }
+    // Load custom courses and schedule from Firestore
+    const dbCourses = await getCourses(userId);
+    setCourses(dbCourses);
+
+    const dbSchedule = await getSchedule(userId);
+    setSchedule(dbSchedule);
+
+    setLoading(false);
     setCurrentTab('dashboard');
   };
 
-  const handleSignOut = () => {
+  const handleSignOut = async () => {
+    await logout();
     setUser(null);
+    setCourses([]);
+    setSchedule([]);
     localStorage.removeItem('attend_iq_user');
   };
 
-  const handleAddCourse = (newC: Omit<Course, 'id' | 'createdAt'>) => {
+  const handleAddCourse = async (newC: Omit<Course, 'id' | 'createdAt'>) => {
     if (!user) return;
+    const userId = user.uid || 'demo-user-' + user.email.split('@')[0];
     const course: Course = {
       ...newC,
       id: 'course-' + Date.now(),
       createdAt: new Date().toISOString(),
     };
-    const nextCourses = [course, ...courses]; // Show newest first
+    
+    const nextCourses = [course, ...courses];
     setCourses(nextCourses);
-    localStorage.setItem('attend_iq_courses_' + user.email, JSON.stringify(nextCourses));
+
+    await saveCourse(userId, course);
   };
 
-  const handleDeleteCourse = (id: string) => {
+  const handleDeleteCourse = async (id: string) => {
     if (!user) return;
+    const userId = user.uid || 'demo-user-' + user.email.split('@')[0];
+    
     const nextCourses = courses.filter(c => c.id !== id);
     setCourses(nextCourses);
-    localStorage.setItem('attend_iq_courses_' + user.email, JSON.stringify(nextCourses));
+
+    await removeCourse(userId, id);
+
+    // Clean up schedule slots tied to this deleted course
+    const slotsToDelete = schedule.filter(s => s.courseId === id);
+    for (const slot of slotsToDelete) {
+      await removeScheduleSlot(userId, slot.id);
+    }
+    setSchedule(prev => prev.filter(s => s.courseId !== id));
   };
 
-  const handleUpdateCourse = (
+  const handleUpdateCourse = async (
     id: string,
     held: number,
     attended: number,
@@ -134,6 +177,8 @@ export default function App() {
     required_percent?: number
   ) => {
     if (!user) return;
+    const userId = user.uid || 'demo-user-' + user.email.split('@')[0];
+    
     const nextCourses = courses.map(c => {
       if (c.id === id) {
         return {
@@ -149,13 +194,31 @@ export default function App() {
       return c;
     });
     setCourses(nextCourses);
-    localStorage.setItem('attend_iq_courses_' + user.email, JSON.stringify(nextCourses));
+
+    const updatedCourse = nextCourses.find(c => c.id === id);
+    if (updatedCourse) {
+      await saveCourse(userId, updatedCourse);
+    }
   };
 
-  const handleUpdateSchedule = (nextSchedule: ScheduleSlot[]) => {
+  const handleUpdateSchedule = async (nextSchedule: ScheduleSlot[]) => {
     if (!user) return;
+    const userId = user.uid || 'demo-user-' + user.email.split('@')[0];
+    
     setSchedule(nextSchedule);
-    localStorage.setItem('attend_iq_schedule_' + user.email, JSON.stringify(nextSchedule));
+
+    // Sync database: Save current layout and prune removed ones
+    const originalSlots = await getSchedule(userId);
+    
+    for (const slot of nextSchedule) {
+      await saveScheduleSlot(userId, slot);
+    }
+
+    const nextIds = nextSchedule.map(s => s.id);
+    const slotsToRemove = originalSlots.filter(s => !nextIds.includes(s.id));
+    for (const slot of slotsToRemove) {
+      await removeScheduleSlot(userId, slot.id);
+    }
   };
 
   if (loading) {
@@ -163,7 +226,7 @@ export default function App() {
       <div className="min-h-screen flex items-center justify-center bg-[#F5F5F0] dark:bg-[#1C1C16] text-[#5A5A40] dark:text-[#D4A373]">
         <div className="flex flex-col items-center gap-3">
           <div className="w-10 h-10 border-4 border-current border-t-transparent rounded-full animate-spin" />
-          <p className="font-serif italic text-sm tracking-wide">Syncing Attendance Database...</p>
+          <p className="font-serif italic text-sm tracking-wide">Syncing Academic Database...</p>
         </div>
       </div>
     );
